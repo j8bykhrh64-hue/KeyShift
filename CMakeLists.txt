@@ -19,15 +19,14 @@ FetchContent_Declare(signalsmith-stretch
     GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
     GIT_TAG main)
 
-# The pitch engine also needs this library. The folder is named so that
-# #include "signalsmith-linear/stft.h" resolves either way it is laid out.
+# The pitch engine fetches its own "linear" library. We tell it where to put it
+# so that #include "signalsmith-linear/stft.h" can be found.
 FetchContent_Declare(signalsmith-linear
     GIT_REPOSITORY https://github.com/Signalsmith-Audio/linear.git
     GIT_TAG main
     SOURCE_DIR ${CMAKE_BINARY_DIR}/deps/signalsmith-linear)
 
 FetchContent_MakeAvailable(JUCE signalsmith-stretch)
-FetchContent_Populate(signalsmith-linear)
 
 juce_add_plugin(KeyShift
     COMPANY_NAME "KeyShift"
@@ -62,4 +61,13 @@ target_link_libraries(KeyShift
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
-        
+
+if(TARGET signalsmith-stretch)
+    target_link_libraries(KeyShift PRIVATE signalsmith-stretch)
+endif()
+if(TARGET signalsmith-linear)
+    target_link_libraries(KeyShift PRIVATE signalsmith-linear)
+endif()
+if(APPLE)
+    target_link_libraries(KeyShift PRIVATE "-framework Accelerate")
+endif()
