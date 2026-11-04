@@ -2,56 +2,32 @@
 
 #include "PluginProcessor.h"
 
-// Minimal, clean single-knob look
-class KnobLookAndFeel : public juce::LookAndFeel_V4
+namespace ks
+{
+    inline const juce::Colour ink     { 0xff59627a };
+    inline const juce::Colour inkSoft { 0xff8a93a8 };
+    inline const juce::Colour amberHi { 0xffffe066 };
+    inline const juce::Colour amber   { 0xffffb938 };
+    inline const juce::Colour amberLo { 0xffff7a35 };
+    inline const juce::Colour dotBlue { 0xffa9c8ea };
+    inline const juce::Colour cyan    { 0xff48d8e8 };
+}
+
+// Soft white "hardware" look: recessed bezel, dark arc, glowing amber value arc
+class SoftLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    static inline const juce::Colour accent { 0xff7c9cff };
+    void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
+                           float sliderPos, float startAngle, float endAngle,
+                           juce::Slider&) override;
 
-    void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h,
-                           float pos, float startAngle, float endAngle,
-                           juce::Slider&) override
-    {
-        auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (8.0f);
-        const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
-        const auto centre  = bounds.getCentre();
-        const float angle  = startAngle + pos * (endAngle - startAngle);
-        const float zero   = startAngle + 0.5f * (endAngle - startAngle);
-
-        // Track
-        juce::Path track;
-        track.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, endAngle, true);
-        g.setColour (juce::Colour (0xff2a2d33));
-        g.strokePath (track, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved,
-                                                   juce::PathStrokeType::rounded));
-
-        // Value arc (grows from centre / 0 st)
-        juce::Path val;
-        val.addCentredArc (centre.x, centre.y, radius, radius, 0.0f,
-                           juce::jmin (zero, angle), juce::jmax (zero, angle), true);
-        g.setColour (accent);
-        g.strokePath (val, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved,
-                                                 juce::PathStrokeType::rounded));
-
-        // Knob body
-        const float bodyR = radius * 0.76f;
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3b3f47), centre.x, centre.y - bodyR,
-                                                 juce::Colour (0xff1b1d21), centre.x, centre.y + bodyR, false));
-        g.fillEllipse (centre.x - bodyR, centre.y - bodyR, bodyR * 2.0f, bodyR * 2.0f);
-
-        g.setColour (juce::Colour (0xff4a4e57));
-        g.drawEllipse (centre.x - bodyR, centre.y - bodyR, bodyR * 2.0f, bodyR * 2.0f, 1.0f);
-
-        // Pointer
-        juce::Path p;
-        p.addRoundedRectangle (-1.75f, -bodyR + 7.0f, 3.5f, bodyR * 0.30f, 1.75f);
-        p.applyTransform (juce::AffineTransform::rotation (angle).translated (centre));
-        g.setColour (juce::Colours::white);
-        g.fillPath (p);
-    }
+    void drawToggleButton (juce::Graphics&, juce::ToggleButton&,
+                           bool shouldDrawButtonAsHighlighted,
+                           bool shouldDrawButtonAsDown) override;
 };
 
-class KeyShiftEditor : public juce::AudioProcessorEditor
+class KeyShiftEditor : public juce::AudioProcessorEditor,
+                       private juce::Timer
 {
 public:
     explicit KeyShiftEditor (KeyShiftProcessor&);
@@ -61,10 +37,27 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
+    void setupKnob (juce::Slider&, bool big, bool bipolar, double defaultValue);
+    void drawDisplay (juce::Graphics&);
+    void drawMeterBar (juce::Graphics&);
+
     KeyShiftProcessor& processor;
-    KnobLookAndFeel lnf;
-    juce::Slider knob;
-    juce::AudioProcessorValueTreeState::SliderAttachment attachment;
+    SoftLookAndFeel lnf;
+
+    juce::Slider pitch, fine, mix, output;
+    juce::ToggleButton bypass;
+
+    using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    SliderAtt pitchAtt, fineAtt, mixAtt, outAtt;
+    ButtonAtt bypassAtt;
+
+    float displayLevel = 0.0f;   // smoothed linear output level for the meter / display
+    float phase = 0.0f;          // gentle idle animation for the display
+
+    juce::Rectangle<float> pitchPill, finePill, mixPill, outPill, bypassPill;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KeyShiftEditor)
 };
+
