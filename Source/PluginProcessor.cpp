@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 KeyShiftProcessor::KeyShiftProcessor()
     : AudioProcessor (BusesProperties()
@@ -7,21 +8,56 @@ KeyShiftProcessor::KeyShiftProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", createParameterLayout())
 {
-    semitonesParam = apvts.getRawParameterValue ("semitones");
+    pitchParam  = apvts.getRawParameterValue ("semitones");
+    fineParam   = apvts.getRawParameterValue ("fine");
+    mixParam    = apvts.getRawParameterValue ("mix");
+    outParam    = apvts.getRawParameterValue ("output");
+    bypassParam = apvts.getRawParameterValue ("bypass");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout KeyShiftProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    auto attrs = juce::AudioParameterIntAttributes()
-                     .withStringFromValueFunction ([] (int v, int)
-                     {
-                         return (v > 0 ? "+" : "") + juce::String (v) + " st";
-                     });
-
+    // Pitch: whole semitones
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { "semitones", 1 }, "Pitch", -12, 12, 0, attrs));
+        juce::ParameterID { "semitones", 1 }, "Pitch", -12, 12, 0,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int)
+        {
+            return juce::String ((v > 0 ? "+" : "") + juce::String (v) + " st");
+        })));
+
+    // Fine tune in cents
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "fine", 1 }, "Fine",
+        juce::NormalisableRange<float> (-50.0f, 50.0f, 1.0f), 0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+        {
+            const int c = (int) std::round (v);
+            return juce::String ((c > 0 ? "+" : "") + juce::String (c) + " ct");
+        })));
+
+    // Dry / wet
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "mix", 1 }, "Mix",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+        {
+            return juce::String (juce::roundToInt (v * 100.0f)) + " %";
+        })));
+
+    // Output trim
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "output", 1 }, "Output",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+        {
+            return juce::String ((v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB");
+        })));
+
+    // Bypass
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "bypass", 1 }, "Bypass", false));
 
     return layout;
 }
@@ -39,12 +75,12 @@ void KeyShiftProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     numCh = juce::jmax (1, getTotalNumInputChannels());
 
-    // Default preset = highest-quality real-time setting (large window, good transient handling)
+    // Default preset = highest-quality real-time setting
     stretch.presetDefault (numCh, (float) sampleRate);
     stretch.reset();
 
     const int latency = stretch.inputLatency() + stretch.outputLatency();
-    setLatencySamples (latency);   // Ableton automatically compensates for this
+    setLatencySamples (latency);   // Ableton compensates automatically
 
     dryLen = juce::jmax (1, latency);
     dryRing.assign ((size_t) numCh, std::vector<float> ((size_t) dryLen, 0.0f));
@@ -52,11 +88,19 @@ void KeyShiftProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     wetBuffer.setSize (numCh, juce::jmax (1, samplesPerBlock), false, true, false);
 
-    lastSemitones = (int) std::round (semitonesParam->load());
-    stretch.setTransposeSemitones ((float) lastSemitones);
+    lastTranspose = pitchParam->load() + fineParam->load() * 0.01f;
+    stretch.setTransposeSemitones (lastTranspose);
 
-    wetMix.reset (sampleRate, 0.030);   // 30 ms crossfade between dry / shifted
-    wetMix.setCurrentAndTargetValue (lastSemitones != 0 ? 1.0f : 0.0f);
+    const bool bypassed = bypassParam->load() > 0.5f;
+    const bool shifted  = std::abs (lastTranspose) > 1.0e-4f;
+
+    wetAmount.reset (sampleRate, 0.030);
+    wetAmount.setCurrentAndTargetValue ((bypassed || ! shifted) ? 0.0f : mixParam->load());
+
+    outGain.reset (sampleRate, 0.020);
+    outGain.setCurrentAndTargetValue (bypassed ? 1.0f : juce::Decibels::decibelsToGain (outParam->load()));
+
+    outputPeak.store (0.0f);
 }
 
 void KeyShiftProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -72,25 +116,39 @@ void KeyShiftProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     if (wetBuffer.getNumSamples() < n)
         wetBuffer.setSize (numCh, n, false, false, true);
 
-    const int semis = (int) std::round (semitonesParam->load());
-    if (semis != lastSemitones)
+    // --- parameters ---
+    const float transpose = pitchParam->load() + fineParam->load() * 0.01f;
+    if (std::abs (transpose - lastTranspose) > 1.0e-4f)
     {
-        stretch.setTransposeSemitones ((float) semis);
-        lastSemitones = semis;
+        stretch.setTransposeSemitones (transpose);
+        lastTranspose = transpose;
     }
-    wetMix.setTargetValue (semis != 0 ? 1.0f : 0.0f);
 
-    // Always run the engine so it stays primed and latency stays constant
+    const bool bypassed = bypassParam->load() > 0.5f;
+    const bool shifted  = std::abs (transpose) > 1.0e-4f;
+
+    wetAmount.setTargetValue ((bypassed || ! shifted) ? 0.0f : mixParam->load());
+    outGain.setTargetValue (bypassed ? 1.0f : juce::Decibels::decibelsToGain (outParam->load()));
+
+    // Always run the engine so latency stays constant and the state stays primed
     stretch.process (buffer.getArrayOfReadPointers(), n,
                      wetBuffer.getArrayOfWritePointers(), n);
 
+    constexpr float halfPi = 1.57079632679f;
+    float blockPeak = 0.0f;
+
     for (int i = 0; i < n; ++i)
     {
-        const float m = wetMix.getNextValue();
+        const float m = wetAmount.getNextValue();
+        const float g = outGain.getNextValue();
+
+        // equal-power crossfade (dry and shifted signals are uncorrelated)
+        const float wetG = std::sin (m * halfPi);
+        const float dryG = std::cos (m * halfPi);
 
         for (int c = 0; c < ch; ++c)
         {
-            auto* io = buffer.getWritePointer (c);
+            auto* io   = buffer.getWritePointer (c);
             auto& ring = dryRing[(size_t) c];
 
             const float in      = io[i];
@@ -98,11 +156,17 @@ void KeyShiftProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             ring[(size_t) dryPos] = in;
 
             const float wet = wetBuffer.getReadPointer (c)[i];
-            io[i] = delayed * (1.0f - m) + wet * m;
+            const float out = (delayed * dryG + wet * wetG) * g;
+
+            io[i] = out;
+            blockPeak = juce::jmax (blockPeak, std::abs (out));
         }
 
         if (++dryPos >= dryLen) dryPos = 0;
     }
+
+    if (blockPeak > outputPeak.load())
+        outputPeak.store (blockPeak);
 }
 
 juce::AudioProcessorEditor* KeyShiftProcessor::createEditor()
