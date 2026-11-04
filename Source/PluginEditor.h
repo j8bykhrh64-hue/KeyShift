@@ -41,7 +41,7 @@ private:
     void setupKnob (juce::Slider&, bool big, bool bipolar, double defaultValue);
     void drawModule (juce::Graphics&);
 
-    KeyShiftProcessor& processor;
+    KeyShiftProcessor& keyShiftProcessor;
     SoftLookAndFeel lnf;
 
     juce::Slider pitch, fine, mix, output;
