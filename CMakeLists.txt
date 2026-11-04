@@ -31,11 +31,14 @@ juce_add_plugin(KeyShift
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     VST3_CATEGORIES "Fx" "Pitch Shift"
-    COPY_PLUGIN_AFTER_BUILD TRUE)
+    COPY_PLUGIN_AFTER_BUILD FALSE)
 
 target_sources(KeyShift PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
+
+target_include_directories(KeyShift PRIVATE
+    ${signalsmith-stretch_SOURCE_DIR})
 
 target_compile_definitions(KeyShift PUBLIC
     JUCE_WEB_BROWSER=0
@@ -45,7 +48,6 @@ target_compile_definitions(KeyShift PUBLIC
 target_link_libraries(KeyShift
     PRIVATE
         juce::juce_audio_utils
-        signalsmith-stretch
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
