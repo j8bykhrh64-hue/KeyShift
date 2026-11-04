@@ -1,0 +1,23 @@
+   name: Build KeyShift
+   on:
+     push:
+     workflow_dispatch:
+   jobs:
+     mac:
+       runs-on: macos-14
+       steps:
+         - uses: actions/checkout@v4
+         - name: Configure
+           run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+         - name: Build
+           run: cmake --build build -j4
+         - name: Package
+           run: |
+             PLUGIN=$(find build -name "KeyShift.vst3" -type d | head -n 1)
+             echo "Found: $PLUGIN"
+             codesign --force --deep -s - "$PLUGIN"
+             ditto -c -k --keepParent "$PLUGIN" KeyShift-mac.zip
+         - uses: actions/upload-artifact@v4
+           with:
+             name: KeyShift-mac
+             path: KeyShift-mac.zip
