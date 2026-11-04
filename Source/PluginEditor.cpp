@@ -3,12 +3,11 @@
 
 namespace
 {
-    constexpr int kWidth       = 620;
-    constexpr int kHeight      = 480;
-    constexpr int kDisplayH    = 132;
-    constexpr int kPanelTop    = 124;
-    constexpr int kMeterTop    = 440;
-    constexpr int kMeterDots   = 40;
+    constexpr int kW = 600;
+    constexpr int kH = 392;
+
+    const juce::Rectangle<float> kCard   (14.0f, 14.0f, 572.0f, 364.0f);
+    const juce::Rectangle<float> kModule (360.0f, 52.0f, 212.0f, 166.0f);
 
     void drawLabel (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r,
                     float size, bool bold, juce::Colour col, float kerning,
@@ -21,40 +20,44 @@ namespace
         g.drawText (text, r, just, false);
     }
 
-    void drawPill (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text)
+    void drawOrb (juce::Graphics& g, float cx, float cy, float r)
     {
-        juce::Path p;
-        p.addRoundedRectangle (r, r.getHeight() * 0.5f);
-
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd5dce7), r.getX(), r.getY(),
-                                                 juce::Colour (0xffe8edf5), r.getX(), r.getBottom(), false));
-        g.fillPath (p);
-
-        // tiny highlight on the lower edge gives an inset look
-        g.setColour (juce::Colours::white.withAlpha (0.9f));
-        g.drawLine (r.getX() + r.getHeight() * 0.5f, r.getBottom() - 0.5f,
-                    r.getRight() - r.getHeight() * 0.5f, r.getBottom() - 0.5f, 1.0f);
-
-        drawLabel (g, text, r, 10.5f, true, ks::ink, 0.12f, juce::Justification::centred);
-    }
-
-    void drawScrew (juce::Graphics& g, float cx, float cy)
-    {
-        const float r = 4.5f;
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xfff4f7fb), cx, cy - r,
-                                                 juce::Colour (0xffd2d9e5), cx, cy + r, false));
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.9f),
+                                                 cx - r * 0.35f, cy - r * 0.35f,
+                                                 juce::Colour (0xffbcc4de).withAlpha (0.55f),
+                                                 cx + r * 0.5f, cy + r * 0.5f, true));
         g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-        g.setColour (juce::Colour (0x30000000));
-        g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 0.8f);
-        g.drawLine (cx - 2.2f, cy + 2.2f, cx + 2.2f, cy - 2.2f, 1.0f);
     }
 
-    juce::Colour meterColour (float t)
+    juce::Colour segmentColour (int i)
     {
-        if (t < 0.62f) return ks::cyan;
-        if (t < 0.82f) return juce::Colour (0xffe9d85a);
-        if (t < 0.93f) return juce::Colour (0xffff9a3c);
-        return juce::Colour (0xffff4d4d);
+        if (i >= 14) return juce::Colour (0xffff5b4a);
+        if (i >= 12) return juce::Colour (0xffff9a3c);
+        if (i >= 10) return juce::Colour (0xffe9d85a);
+        return ks::cyan;
+    }
+
+    // Vertical 16-segment LED meter, 0 dB at the top, 3 dB per segment
+    void drawMeter (juce::Graphics& g, float x, float yBottom, float level)
+    {
+        const float dB = juce::Decibels::gainToDecibels (level, -80.0f);
+
+        for (int i = 0; i < 16; ++i)
+        {
+            const float y = yBottom - (float) (i + 1) * 6.5f + 2.0f;
+            const juce::Rectangle<float> seg (x, y, 12.0f, 4.5f);
+            const bool on = dB >= -45.0f + (float) i * 3.0f;
+            const juce::Colour col = on ? segmentColour (i) : juce::Colour (0xff262a33);
+
+            if (on)
+            {
+                g.setColour (col.withAlpha (0.20f));
+                g.fillRoundedRectangle (seg.expanded (2.0f), 3.0f);
+            }
+
+            g.setColour (col);
+            g.fillRoundedRectangle (seg, 1.5f);
+        }
     }
 }
 
@@ -70,89 +73,88 @@ void SoftLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     const bool big     = (bool) s.getProperties()["big"];
     const bool bipolar = (bool) s.getProperties()["bipolar"];
 
-    const auto area  = Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
-    const auto c     = area.getCentre();
-    const float outer = jmin (area.getWidth(), area.getHeight()) * 0.5f - 3.0f;
-    const float arcR  = outer * 0.80f;
-    const float thick = big ? 6.0f : 4.0f;
-    const float capR  = arcR * 0.76f;
+    const auto area = Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
+    const auto c    = area.getCentre();
 
-    const float angle     = startAngle + pos * (endAngle - startAngle);
-    const float zeroAngle = startAngle + 0.5f * (endAngle - startAngle);
+    const float outer = jmin (area.getWidth(), area.getHeight()) * 0.5f - 2.0f;
+    const float ringR = outer - (big ? 3.0f : 2.0f);       // dotted LED ring
+    const float bodyR = ringR * (big ? 0.80f : 0.72f);     // knob body
+    const float capR  = bodyR * (big ? 0.60f : 0.58f);     // raised cap
 
-    // --- recessed bezel ---
+    const float angle = startAngle + pos * (endAngle - startAngle);
+
+    // --- dotted ring ---
+    const int n      = big ? 49 : 25;
+    const int mid    = (n - 1) / 2;
+    const int active = roundToInt (pos * (float) (n - 1));
+
+    for (int i = 0; i < n; ++i)
     {
-        Path bz;
-        bz.addEllipse (c.x - outer, c.y - outer, outer * 2.0f, outer * 2.0f);
-        DropShadow (Colour (0x30506088), big ? 16 : 10, juce::Point<int> (0, big ? 6 : 4)).drawForPath (g, bz);
+        const float a = startAngle + (float) i / (float) (n - 1) * (endAngle - startAngle);
+        const juce::Point<float> p (c.x + ringR * std::sin (a), c.y - ringR * std::cos (a));
 
-        g.setGradientFill (ColourGradient (Colour (0xffdbe2ed), c.x, c.y - outer,
-                                           Colour (0xfff8fafd), c.x, c.y + outer, false));
-        g.fillPath (bz);
+        bool lit;
+        if (bipolar) lit = (i >= jmin (mid, active)) && (i <= jmax (mid, active));
+        else         lit = pos > 0.0f && i <= active;
 
-        g.setColour (Colours::white.withAlpha (0.85f));
-        g.drawEllipse (c.x - outer + 0.5f, c.y - outer + 0.5f, outer * 2.0f - 1.0f, outer * 2.0f - 1.0f, 1.0f);
+        const float baseR = big ? 1.5f : 1.1f;
+        const float r     = (i == mid && bipolar) ? baseR * 1.5f : baseR;
+
+        if (lit)
+        {
+            g.setColour (ks::dotLit.withAlpha (0.20f));
+            g.fillEllipse (p.x - r * 2.6f, p.y - r * 2.6f, r * 5.2f, r * 5.2f);
+            g.setColour (ks::dotLit);
+            g.fillEllipse (p.x - r * 1.2f, p.y - r * 1.2f, r * 2.4f, r * 2.4f);
+        }
+        else
+        {
+            g.setColour (ks::dotOff);
+            g.fillEllipse (p.x - r, p.y - r, r * 2.0f, r * 2.0f);
+        }
     }
 
-    // --- dark arc track ---
-    Path track;
-    track.addCentredArc (c.x, c.y, arcR, arcR, 0.0f, startAngle, endAngle, true);
-    g.setColour (Colour (0xff2b3040));
-    g.strokePath (track, PathStrokeType (thick, PathStrokeType::curved, PathStrokeType::rounded));
-
-    // --- glowing value arc ---
-    const float a0 = bipolar ? jmin (zeroAngle, angle) : startAngle;
-    const float a1 = bipolar ? jmax (zeroAngle, angle) : angle;
-
-    if (a1 - a0 > 0.01f)
+    // --- soft knob body ---
     {
-        Path val;
-        val.addCentredArc (c.x, c.y, arcR, arcR, 0.0f, a0, a1, true);
+        Path body;
+        body.addEllipse (c.x - bodyR, c.y - bodyR, bodyR * 2.0f, bodyR * 2.0f);
+        DropShadow (Colour (0x2a506088), big ? 20 : 11, juce::Point<int> (0, big ? 8 : 4)).drawForPath (g, body);
 
-        g.setColour (ks::amber.withAlpha (0.10f));
-        g.strokePath (val, PathStrokeType (thick + 10.0f, PathStrokeType::curved, PathStrokeType::rounded));
-        g.setColour (ks::amber.withAlpha (0.22f));
-        g.strokePath (val, PathStrokeType (thick + 5.0f, PathStrokeType::curved, PathStrokeType::rounded));
+        g.setGradientFill (ColourGradient (Colour (0xfffdfdff), c.x, c.y - bodyR,
+                                           Colour (0xffe8ebf4), c.x, c.y + bodyR, false));
+        g.fillPath (body);
 
-        g.setGradientFill (ColourGradient (ks::amberHi, c.x, c.y - arcR,
-                                           ks::amberLo, c.x, c.y + arcR, false));
-        g.strokePath (val, PathStrokeType (thick, PathStrokeType::curved, PathStrokeType::rounded));
-    }
+        g.setColour (Colours::white.withAlpha (0.9f));
+        g.drawEllipse (c.x - bodyR + 0.5f, c.y - bodyR + 0.5f, bodyR * 2.0f - 1.0f, bodyR * 2.0f - 1.0f, 1.0f);
 
-    // --- zero marker at 12 o'clock ---
-    if (bipolar)
-    {
-        const float len = big ? 9.0f : 6.0f;
-        const float top = c.y - arcR - thick * 0.5f - 1.0f - len;
-        g.setColour (Colour (0xff2b3040));
-        g.fillRoundedRectangle (c.x - 1.5f, top, 3.0f, len, 1.5f);
+        // thin concentric line
+        g.setColour (Colour (0x10000000));
+        g.drawEllipse (c.x - bodyR * 0.90f, c.y - bodyR * 0.90f, bodyR * 1.80f, bodyR * 1.80f, 0.8f);
     }
 
     // --- raised cap ---
     {
         Path cap;
         cap.addEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
-        DropShadow (Colour (0x55506088), big ? 14 : 8, juce::Point<int> (0, big ? 7 : 4)).drawForPath (g, cap);
+        DropShadow (Colour (0x34506088), big ? 12 : 6, juce::Point<int> (0, big ? 5 : 3)).drawForPath (g, cap);
 
         g.setGradientFill (ColourGradient (Colours::white, c.x, c.y - capR,
-                                           Colour (0xffe3e8f1), c.x, c.y + capR, false));
+                                           Colour (0xffeceff6), c.x, c.y + capR, false));
         g.fillPath (cap);
 
-        g.setColour (Colour (0x12000000));
-        g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.0f);
+        g.setColour (Colour (0x0e000000));
+        g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 0.8f);
     }
 
-    // --- pointer dot ---
+    // --- pointer dot on the rim ---
     {
-        const float pr   = capR * 0.66f;
-        const float dotR = big ? 6.5f : 4.2f;
+        const float pr   = bodyR * 0.86f;
+        const float dotR = big ? 2.8f : 1.9f;
         const juce::Point<float> p (c.x + pr * std::sin (angle), c.y - pr * std::cos (angle));
 
-        g.setColour (ks::dotBlue.withAlpha (0.35f));
-        g.fillEllipse (p.x - dotR - 2.0f, p.y - dotR - 2.0f, (dotR + 2.0f) * 2.0f, (dotR + 2.0f) * 2.0f);
-
-        g.setGradientFill (ColourGradient (Colour (0xffcfe0f3), p.x, p.y - dotR,
-                                           ks::dotBlue.darker (0.15f), p.x, p.y + dotR, false));
+        g.setColour (ks::pointer.withAlpha (0.22f));
+        g.fillEllipse (p.x - dotR * 2.2f, p.y - dotR * 2.2f, dotR * 4.4f, dotR * 4.4f);
+        g.setColour (ks::pointer);
         g.fillEllipse (p.x - dotR, p.y - dotR, dotR * 2.0f, dotR * 2.0f);
     }
 }
@@ -163,39 +165,32 @@ void SoftLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b
     using namespace juce;
     ignoreUnused (down);
 
-    const auto r = b.getLocalBounds().toFloat().reduced (3.0f);
+    const auto r  = b.getLocalBounds().toFloat().reduced (1.5f);
     const bool on = b.getToggleState();   // ON = bypass engaged
 
     Path p;
-    p.addRoundedRectangle (r, 14.0f);
-    DropShadow (Colour (0x55506088), 12, juce::Point<int> (0, 5)).drawForPath (g, p);
+    p.addRoundedRectangle (r, r.getHeight() * 0.5f);
 
-    const Colour top = highlighted ? Colour (0xff474e63) : Colour (0xff3a4052);
-    g.setGradientFill (ColourGradient (top, r.getX(), r.getY(),
-                                       Colour (0xff1a1d28), r.getX(), r.getBottom(), false));
+    g.setColour (Colours::white.withAlpha (highlighted ? 0.95f : 0.65f));
     g.fillPath (p);
+    g.setColour (Colour (0x22000000));
+    g.strokePath (p, PathStrokeType (1.0f));
 
-    // button face
-    const auto face = r.reduced (10.0f);
-    g.setGradientFill (ColourGradient (Colour (0xff222634), face.getX(), face.getY(),
-                                       Colour (0xff30364a), face.getX(), face.getBottom(), false));
-    g.fillEllipse (face);
-    g.setColour (Colour (0x18ffffff));
-    g.drawEllipse (face, 1.0f);
-
-    // LED
-    const juce::Point<float> led (r.getRight() - 10.0f, r.getY() + 10.0f);
+    const juce::Point<float> led (r.getX() + r.getHeight() * 0.5f, r.getCentreY());
     if (on)
     {
-        g.setColour (ks::amber.withAlpha (0.28f));
-        g.fillEllipse (led.x - 8.0f, led.y - 8.0f, 16.0f, 16.0f);
-        g.setColour (ks::amberHi);
+        g.setColour (ks::amber.withAlpha (0.30f));
+        g.fillEllipse (led.x - 7.0f, led.y - 7.0f, 14.0f, 14.0f);
+        g.setColour (ks::amber);
     }
     else
     {
-        g.setColour (Colour (0xff0d0f15));
+        g.setColour (ks::dotOff);
     }
-    g.fillEllipse (led.x - 3.2f, led.y - 3.2f, 6.4f, 6.4f);
+    g.fillEllipse (led.x - 3.0f, led.y - 3.0f, 6.0f, 6.0f);
+
+    drawLabel (g, "BYPASS", r.withTrimmedLeft (r.getHeight() * 0.8f), 9.5f, false,
+               on ? Colour (0xff5d6580) : ks::inkSoft, 0.22f, Justification::centred);
 }
 
 //==============================================================================
@@ -219,7 +214,7 @@ KeyShiftEditor::KeyShiftEditor (KeyShiftProcessor& p)
     bypass.onClick = [this] { repaint(); };
     addAndMakeVisible (bypass);
 
-    setSize (kWidth, kHeight);
+    setSize (kW, kH);
     startTimerHz (30);
 }
 
@@ -250,226 +245,173 @@ void KeyShiftEditor::setupKnob (juce::Slider& s, bool big, bool bipolar, double 
 
 void KeyShiftEditor::timerCallback()
 {
-    const float peak = processor.consumeOutputPeak();
-    displayLevel = juce::jmax (peak, displayLevel * 0.82f);
-    phase += 0.09f;
+    displayIn  = juce::jmax (processor.consumeInputPeak(),  displayIn  * 0.82f);
+    displayOut = juce::jmax (processor.consumeOutputPeak(), displayOut * 0.82f);
 
-    repaint (0, 0, getWidth(), kDisplayH);
-    repaint (0, kMeterTop, getWidth(), getHeight() - kMeterTop);
+    repaint (kModule.getSmallestIntegerContainer().expanded (30, 30));
 }
 
 void KeyShiftEditor::resized()
 {
-    pitch.setBounds  (52,  148, 240, 240);
-    fine.setBounds   (352, 150, 96, 96);
-    mix.setBounds    (487, 150, 96, 96);
-    output.setBounds (352, 288, 96, 96);
-    bypass.setBounds (503, 304, 64, 64);
-
-    pitchPill  = { 102.0f, 402.0f, 140.0f, 24.0f };
-    finePill   = { 350.0f, 252.0f, 100.0f, 22.0f };
-    mixPill    = { 485.0f, 252.0f, 100.0f, 22.0f };
-    outPill    = { 350.0f, 390.0f, 100.0f, 22.0f };
-    bypassPill = { 485.0f, 390.0f, 100.0f, 22.0f };
+    pitch.setBounds  (64,  52,  236, 236);
+    fine.setBounds   (360, 236, 64, 64);
+    mix.setBounds    (434, 236, 64, 64);
+    output.setBounds (508, 236, 64, 64);
+    bypass.setBounds (466, 342, 96, 26);
 }
 
 //------------------------------------------------------------------------------
-void KeyShiftEditor::drawDisplay (juce::Graphics& g)
+void KeyShiftEditor::drawModule (juce::Graphics& g)
 {
     using namespace juce;
 
-    const float W = (float) getWidth();
+    const auto m = kModule;
 
-    // background + soft violet glow
-    g.setGradientFill (ColourGradient (Colour (0xff222840), 0.0f, 0.0f,
-                                       Colour (0xff12151f), 0.0f, (float) kDisplayH, false));
-    g.fillRect (0.0f, 0.0f, W, (float) kDisplayH);
+    Path p;
+    p.addRoundedRectangle (m, 18.0f);
 
-    g.setGradientFill (ColourGradient (Colour (0x44604bd0), 430.0f, 100.0f,
-                                       Colour (0x00604bd0), 700.0f, 100.0f, true));
-    g.fillRect (0.0f, 0.0f, W, (float) kDisplayH);
+    // soft cyan glow + dark shadow
+    DropShadow (Colour (0x3048d8e8), 26, juce::Point<int> (0, 12)).drawForPath (g, p);
+    DropShadow (Colour (0x55303a5c), 16, juce::Point<int> (0, 8)).drawForPath (g, p);
 
-    // title
-    drawLabel (g, "KEYSHIFT", { 24.0f, 14.0f, 200.0f, 16.0f }, 13.0f, true,
-               Colour (0xffe8edfa), 0.32f, Justification::centredLeft);
-    drawLabel (g, "PITCH SHIFTER", { 24.0f, 31.0f, 200.0f, 12.0f }, 9.0f, false,
-               Colour (0xff7d89a8), 0.28f, Justification::centredLeft);
+    g.setGradientFill (ColourGradient (Colour (0xff222630), m.getX(), m.getY(),
+                                       Colour (0xff0e1015), m.getX(), m.getBottom(), false));
+    g.fillPath (p);
 
-    // shift readout
+    // faint cyan bloom inside the module
+    {
+        Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (p, AffineTransform());
+        g.setGradientFill (ColourGradient (Colour (0x2848d8e8), m.getX() + 30.0f, m.getBottom(),
+                                           Colour (0x0048d8e8), m.getX() + 30.0f, m.getBottom() - 110.0f, true));
+        g.fillRect (m);
+    }
+
+    g.setColour (Colour (0x14ffffff));
+    g.strokePath (p, PathStrokeType (1.0f));
+
+    // --- readout (left) ---
     const double total = pitch.getValue() + fine.getValue() * 0.01;
     const String shiftText = String ((total >= 0.0 ? "+" : "") + String (total, 2));
-    const juce::Rectangle<float> valueRect (24.0f, 46.0f, 210.0f, 34.0f);
+    const juce::Rectangle<float> valueRect (m.getX() + 18.0f, m.getY() + 36.0f, 100.0f, 32.0f);
+
+    drawLabel (g, "SHIFT", { m.getX() + 18.0f, m.getY() + 20.0f, 80.0f, 12.0f }, 9.0f, false,
+               ks::cyan, 0.30f, Justification::centredLeft);
 
     for (float dx : { -1.5f, 1.5f })
         for (float dy : { -1.5f, 1.5f })
-            drawLabel (g, shiftText, valueRect.translated (dx, dy), 28.0f, true,
-                       ks::cyan.withAlpha (0.10f), 0.04f, Justification::centredLeft);
+            drawLabel (g, shiftText, valueRect.translated (dx, dy), 26.0f, false,
+                       ks::cyan.withAlpha (0.10f), 0.02f, Justification::centredLeft);
 
-    drawLabel (g, shiftText, valueRect, 28.0f, true, Colour (0xfff2f5ff), 0.04f,
+    drawLabel (g, shiftText, valueRect, 26.0f, false, Colour (0xffeaf6ff), 0.02f,
                Justification::centredLeft);
-    drawLabel (g, "SEMITONES", { 24.0f, 80.0f, 120.0f, 12.0f }, 9.0f, false,
-               Colour (0xff7d89a8), 0.28f, Justification::centredLeft);
+    drawLabel (g, "SEMITONES", { m.getX() + 18.0f, m.getY() + 68.0f, 90.0f, 12.0f }, 8.0f, false,
+               Colour (0xff6b7389), 0.28f, Justification::centredLeft);
 
-    // ratio + latency
     const double ratio = std::pow (2.0, total / 12.0);
-    drawLabel (g, "RATIO  x" + String (ratio, 3), { W - 220.0f, 16.0f, 196.0f, 14.0f }, 10.0f, false,
-               Colour (0xff9aa6c4), 0.18f, Justification::centredRight);
+    drawLabel (g, "x" + String (ratio, 3), { m.getX() + 18.0f, m.getY() + 104.0f, 90.0f, 14.0f },
+               12.0f, false, Colour (0xff9fb4c8), 0.08f, Justification::centredLeft);
+    drawLabel (g, "RATIO", { m.getX() + 18.0f, m.getY() + 118.0f, 90.0f, 12.0f }, 8.0f, false,
+               Colour (0xff6b7389), 0.28f, Justification::centredLeft);
 
-    const double sr = processor.getSampleRate();
-    const String lat = sr > 0.0 ? String (processor.getLatencySamples() * 1000.0 / sr, 0) + " ms" : String ("--");
-    drawLabel (g, "LATENCY  " + lat, { W - 220.0f, 32.0f, 196.0f, 14.0f }, 10.0f, false,
-               Colour (0xff7d89a8), 0.18f, Justification::centredRight);
+    // --- meters (right) ---
+    const float yBottom = m.getY() + 128.0f;
+    const float xIn  = m.getX() + 108.0f;
+    const float xOut = m.getX() + 130.0f;
 
-    // glowing waveform
-    const float base = 100.0f;
-    const float x0 = 24.0f, x1 = W - 24.0f;
-    const float dB  = Decibels::gainToDecibels (displayLevel, -80.0f);
-    const float lvl = jlimit (0.0f, 1.0f, (dB + 55.0f) / 55.0f);
-    const float amp = 5.0f + 24.0f * lvl;
+    drawMeter (g, xIn,  yBottom, displayIn);
+    drawMeter (g, xOut, yBottom, displayOut);
 
-    const float centres[3] = { 0.36f, 0.58f, 0.82f };
-    const float widths[3]  = { 0.07f, 0.09f, 0.08f };
+    drawLabel (g, "IN",  { xIn  - 6.0f, yBottom + 6.0f, 24.0f, 10.0f }, 8.0f, false,
+               Colour (0xff6b7389), 0.2f, Justification::centred);
+    drawLabel (g, "OUT", { xOut - 6.0f, yBottom + 6.0f, 24.0f, 10.0f }, 8.0f, false,
+               Colour (0xff6b7389), 0.2f, Justification::centred);
 
-    auto envelope = [&] (float x)
+    // dB scale
+    struct Mark { const char* text; int seg; };
+    const Mark marks[] = { { "0", 15 }, { "-12", 11 }, { "-24", 7 }, { "-36", 3 } };
+    for (const auto& mk : marks)
     {
-        float e = 0.0f;
-        const float t0 = (x - x0) / (x1 - x0);
-        for (int k = 0; k < 3; ++k)
-        {
-            const float t = (t0 - centres[k]) / widths[k];
-            e += (0.75f + 0.25f * std::sin (phase + (float) k * 1.7f)) * std::exp (-t * t);
-        }
-        return e;
-    };
-
-    auto horizontalGradient = [&] (float alpha)
-    {
-        ColourGradient grad (Colour (0xffff8a2a).withAlpha (alpha), x0, 0.0f,
-                             Colour (0xff9a63ff).withAlpha (alpha), x1, 0.0f, false);
-        grad.addColour (0.5, Colour (0xffff5fa8).withAlpha (alpha));
-        return grad;
-    };
-
-    // soft glow blobs at the lobes
-    for (int k = 0; k < 3; ++k)
-    {
-        const float cx = x0 + centres[k] * (x1 - x0);
-        g.setGradientFill (ColourGradient (Colour (0xffff6fb5).withAlpha (0.10f + 0.30f * lvl), cx, base,
-                                           Colour (0xffff6fb5).withAlpha (0.0f), cx + 44.0f, base, true));
-        g.fillEllipse (cx - 46.0f, base - 30.0f, 92.0f, 60.0f);
+        const float yc = yBottom - (float) (mk.seg + 1) * 6.5f + 2.0f + 2.25f;
+        drawLabel (g, mk.text, { m.getX() + 150.0f, yc - 6.0f, 40.0f, 12.0f }, 8.0f, false,
+                   Colour (0xff6b7389), 0.1f, Justification::centredLeft);
     }
-
-    // fanned curves
-    const float mults[6] = { -1.0f, -0.7f, -0.4f, 0.4f, 0.7f, 1.0f };
-    g.setGradientFill (horizontalGradient (0.55f));
-    for (float m : mults)
-    {
-        Path curve;
-        for (float x = x0; x <= x1; x += 4.0f)
-        {
-            const float yy = base + envelope (x) * amp * m;
-            if (x == x0) curve.startNewSubPath (x, yy);
-            else         curve.lineTo (x, yy);
-        }
-        g.strokePath (curve, PathStrokeType (1.0f));
-    }
-
-    // base line with glow
-    const Line<float> line (x0, base, x1, base);
-    g.setGradientFill (horizontalGradient (0.10f));
-    g.drawLine (line, 8.0f);
-    g.setGradientFill (horizontalGradient (0.22f));
-    g.drawLine (line, 4.0f);
-    g.setGradientFill (horizontalGradient (1.0f));
-    g.drawLine (line, 1.4f);
-}
-
-void KeyShiftEditor::drawMeterBar (juce::Graphics& g)
-{
-    using namespace juce;
-
-    const float W = (float) getWidth();
-    const float top = (float) kMeterTop;
-    const float hgt = (float) (getHeight() - kMeterTop);
-
-    g.setGradientFill (ColourGradient (Colour (0xff1d2130), 0.0f, top,
-                                       Colour (0xff10131b), 0.0f, top + hgt, false));
-    g.fillRect (0.0f, top, W, hgt);
-    g.setColour (Colour (0x22ffffff));
-    g.fillRect (0.0f, top, W, 1.0f);
-
-    drawLabel (g, "OUTPUT", { 24.0f, top, 70.0f, hgt }, 11.5f, true,
-               Colour (0xffe3e8f5), 0.2f, Justification::centredLeft);
-
-    const float dB = Decibels::gainToDecibels (displayLevel, -80.0f);
-    const int lit  = jlimit (0, kMeterDots,
-                             roundToInt (jmap (dB, -60.0f, 0.0f, 0.0f, (float) kMeterDots)));
-
-    const float mx0 = 100.0f, mx1 = 468.0f, cy = top + hgt * 0.5f;
-    for (int i = 0; i < kMeterDots; ++i)
-    {
-        const float x = mx0 + (float) i * (mx1 - mx0) / (float) (kMeterDots - 1);
-        const bool on = i < lit;
-        const Colour col = on ? meterColour ((float) i / (float) (kMeterDots - 1))
-                              : Colour (0xff2c2f3a);
-
-        if (on)
-        {
-            g.setColour (col.withAlpha (0.25f));
-            g.fillEllipse (x - 5.0f, cy - 5.0f, 10.0f, 10.0f);
-        }
-        g.setColour (col);
-        g.fillEllipse (x - 2.8f, cy - 2.8f, 5.6f, 5.6f);
-    }
-
-    const String dbText = dB <= -60.0f ? String ("-inf dB") : String (dB, 1) + " dB";
-    drawLabel (g, dbText, { 486.0f, top, 110.0f, hgt }, 12.0f, true,
-               Colour (0xffcdd5ea), 0.1f, Justification::centredRight);
 }
 
 void KeyShiftEditor::paint (juce::Graphics& g)
 {
     using namespace juce;
 
-    const float W = (float) getWidth();
+    // pale background with soft glass orbs
+    g.setGradientFill (ColourGradient (Colour (0xffeceff7), 0.0f, 0.0f,
+                                       Colour (0xffd8ddeb), 0.0f, (float) kH, false));
+    g.fillAll();
+    drawOrb (g, 592.0f, 384.0f, 56.0f);
+    drawOrb (g, 8.0f, 10.0f, 34.0f);
 
-    // dark base + display
-    drawDisplay (g);
-
-    // light panel pulled over the display
-    Path panel;
-    panel.addRoundedRectangle (0.0f, (float) kPanelTop, W, 400.0f, 24.0f);
-    DropShadow (Colour (0x66000000), 18, juce::Point<int> (0, -4)).drawForPath (g, panel);
-
-    g.setGradientFill (ColourGradient (Colour (0xfff4f7fb), 0.0f, (float) kPanelTop,
-                                       Colour (0xffe2e8f2), 0.0f, (float) kMeterTop, false));
-    g.fillPath (panel);
-    g.setColour (Colours::white.withAlpha (0.8f));
-    g.strokePath (panel, PathStrokeType (1.0f));
-
-    // divider between the big knob and the small ones
-    g.setColour (Colour (0x16000000));
-    g.fillRect (322.0f, 156.0f, 1.0f, 264.0f);
+    // main card
+    Path card;
+    card.addRoundedRectangle (kCard, 26.0f);
+    DropShadow (Colour (0x30404a78), 28, juce::Point<int> (0, 12)).drawForPath (g, card);
+    g.setGradientFill (ColourGradient (Colour (0xfffafbfe), 0.0f, kCard.getY(),
+                                       Colour (0xffeef0f7), 0.0f, kCard.getBottom(), false));
+    g.fillPath (card);
     g.setColour (Colours::white.withAlpha (0.9f));
-    g.fillRect (323.0f, 156.0f, 1.0f, 264.0f);
+    g.strokePath (card, PathStrokeType (1.0f));
 
-    // screws
-    drawScrew (g, 16.0f,  142.0f);
-    drawScrew (g, W - 16.0f, 142.0f);
-    drawScrew (g, 16.0f,  422.0f);
-    drawScrew (g, W - 16.0f, 422.0f);
+    // title
+    drawLabel (g, "KEYSHIFT", { 36.0f, 28.0f, 200.0f, 14.0f }, 10.5f, false,
+               ks::ink, 0.38f, Justification::centredLeft);
 
-    // labels
+    // tiny dot grid, top right
+    g.setColour (Colour (0xffc3c8d8));
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 6; ++col)
+            g.fillEllipse (kCard.getRight() - 66.0f + (float) col * 6.0f,
+                           kCard.getY() + 18.0f + (float) row * 6.0f, 2.0f, 2.0f);
+
+    // knob value labels
+    const juce::String bullet = juce::String::fromUTF8 ("\xe2\x80\xa2");
+
     const int semis = (int) std::round (pitch.getValue());
     const int cents = (int) std::round (fine.getValue());
     const int mixPc = roundToInt ((float) mix.getValue() * 100.0f);
     const float outDb = (float) output.getValue();
 
-    drawPill (g, pitchPill, "PITCH  " + String ((semis > 0 ? "+" : "") + String (semis)) + " st");
-    drawPill (g, finePill,  "FINE  "  + String ((cents > 0 ? "+" : "") + String (cents)) + " ct");
-    drawPill (g, mixPill,   "MIX  "   + String (mixPc) + " %");
-    drawPill (g, outPill,   "OUT  "   + String ((outDb > 0.05f ? "+" : "") + String (outDb, 1)) + " dB");
-    drawPill (g, bypassPill, "BYPASS");
+    drawLabel (g, "-12", { 182.0f - 81.0f - 20.0f, 260.0f, 40.0f, 12.0f }, 9.5f, false,
+               ks::inkSoft, 0.1f, Justification::centred);
+    drawLabel (g, "+12", { 182.0f + 81.0f - 20.0f, 260.0f, 40.0f, 12.0f }, 9.5f, false,
+               ks::inkSoft, 0.1f, Justification::centred);
 
-    drawMeterBar (g);
+    drawLabel (g, "PITCH  " + bullet + "  " + String ((semis > 0 ? "+" : "") + String (semis)) + " st",
+               { 62.0f, 292.0f, 240.0f, 22.0f }, 13.0f, false, ks::ink, 0.22f, Justification::centred);
+
+    struct Small { const char* name; juce::String value; float x; };
+    const Small smalls[] =
+    {
+        { "FINE",   String ((cents > 0 ? "+" : "") + String (cents)) + " ct", 360.0f },
+        { "MIX",    String (mixPc) + " %",                                    434.0f },
+        { "OUTPUT", String ((outDb > 0.05f ? "+" : "") + String (outDb, 1)) + " dB", 508.0f }
+    };
+    for (const auto& sm : smalls)
+    {
+        drawLabel (g, sm.name,  { sm.x - 5.0f, 302.0f, 74.0f, 12.0f }, 9.0f, false,
+                   ks::inkSoft, 0.26f, Justification::centred);
+        drawLabel (g, sm.value, { sm.x - 5.0f, 314.0f, 74.0f, 12.0f }, 9.5f, false,
+                   ks::ink, 0.10f, Justification::centred);
+    }
+
+    // footer: thin divider + latency
+    g.setColour (Colour (0x10000000));
+    g.fillRect (36.0f, 334.0f, 528.0f, 1.0f);
+    g.setColour (Colours::white.withAlpha (0.9f));
+    g.fillRect (36.0f, 335.0f, 528.0f, 1.0f);
+
+    const double sr = processor.getSampleRate();
+    const String lat = sr > 0.0 ? String (processor.getLatencySamples() * 1000.0 / sr, 0) + " ms" : String ("--");
+    drawLabel (g, "LATENCY  " + lat, { 36.0f, 342.0f, 220.0f, 26.0f }, 9.5f, false,
+               ks::inkSoft, 0.22f, Justification::centredLeft);
+
+    // black glowing module
+    drawModule (g);
 }

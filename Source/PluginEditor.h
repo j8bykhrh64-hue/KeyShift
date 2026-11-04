@@ -4,16 +4,16 @@
 
 namespace ks
 {
-    inline const juce::Colour ink     { 0xff59627a };
-    inline const juce::Colour inkSoft { 0xff8a93a8 };
-    inline const juce::Colour amberHi { 0xffffe066 };
-    inline const juce::Colour amber   { 0xffffb938 };
-    inline const juce::Colour amberLo { 0xffff7a35 };
-    inline const juce::Colour dotBlue { 0xffa9c8ea };
-    inline const juce::Colour cyan    { 0xff48d8e8 };
+    inline const juce::Colour ink      { 0xff7d85a0 };
+    inline const juce::Colour inkSoft  { 0xff9aa2b8 };
+    inline const juce::Colour dotLit   { 0xff5db6ea };
+    inline const juce::Colour dotOff   { 0xffcdd2e0 };
+    inline const juce::Colour pointer  { 0xff6f84c4 };
+    inline const juce::Colour cyan     { 0xff48d8e8 };
+    inline const juce::Colour amber    { 0xffffb938 };
 }
 
-// Soft white "hardware" look: recessed bezel, dark arc, glowing amber value arc
+// Light, airy "soft hardware" look: dotted LED rings, thin strokes, raised white caps
 class SoftLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -39,8 +39,7 @@ public:
 private:
     void timerCallback() override;
     void setupKnob (juce::Slider&, bool big, bool bipolar, double defaultValue);
-    void drawDisplay (juce::Graphics&);
-    void drawMeterBar (juce::Graphics&);
+    void drawModule (juce::Graphics&);
 
     KeyShiftProcessor& processor;
     SoftLookAndFeel lnf;
@@ -53,11 +52,8 @@ private:
     SliderAtt pitchAtt, fineAtt, mixAtt, outAtt;
     ButtonAtt bypassAtt;
 
-    float displayLevel = 0.0f;   // smoothed linear output level for the meter / display
-    float phase = 0.0f;          // gentle idle animation for the display
-
-    juce::Rectangle<float> pitchPill, finePill, mixPill, outPill, bypassPill;
+    float displayIn  = 0.0f;   // smoothed linear levels for the meters
+    float displayOut = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KeyShiftEditor)
 };
-

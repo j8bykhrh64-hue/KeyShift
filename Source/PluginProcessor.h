@@ -36,6 +36,7 @@ public:
 
     // Peak level of the output since the last call (used by the editor's meter)
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
+    float consumeInputPeak()  { return inputPeak.exchange (0.0f); }
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -65,6 +66,7 @@ private:
     std::atomic<float>* bypassParam = nullptr;
 
     std::atomic<float> outputPeak { 0.0f };
+    std::atomic<float> inputPeak  { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KeyShiftProcessor)
 };

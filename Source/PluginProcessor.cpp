@@ -101,6 +101,7 @@ void KeyShiftProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outGain.setCurrentAndTargetValue (bypassed ? 1.0f : juce::Decibels::decibelsToGain (outParam->load()));
 
     outputPeak.store (0.0f);
+    inputPeak.store (0.0f);
 }
 
 void KeyShiftProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -129,6 +130,16 @@ void KeyShiftProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     wetAmount.setTargetValue ((bypassed || ! shifted) ? 0.0f : mixParam->load());
     outGain.setTargetValue (bypassed ? 1.0f : juce::Decibels::decibelsToGain (outParam->load()));
+
+    // input level for the meter
+    {
+        float inPeak = 0.0f;
+        for (int c = 0; c < ch; ++c)
+            inPeak = juce::jmax (inPeak, buffer.getMagnitude (c, 0, n));
+
+        if (inPeak > inputPeak.load())
+            inputPeak.store (inPeak);
+    }
 
     // Always run the engine so latency stays constant and the state stays primed
     stretch.process (buffer.getArrayOfReadPointers(), n,
