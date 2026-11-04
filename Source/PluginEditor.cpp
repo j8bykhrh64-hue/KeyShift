@@ -84,7 +84,7 @@ void SoftLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     {
         Path bz;
         bz.addEllipse (c.x - outer, c.y - outer, outer * 2.0f, outer * 2.0f);
-        DropShadow (Colour (0x30506088), big ? 16 : 10, Point<int> (0, big ? 6 : 4)).drawForPath (g, bz);
+        DropShadow (Colour (0x30506088), big ? 16 : 10, juce::Point<int> (0, big ? 6 : 4)).drawForPath (g, bz);
 
         g.setGradientFill (ColourGradient (Colour (0xffdbe2ed), c.x, c.y - outer,
                                            Colour (0xfff8fafd), c.x, c.y + outer, false));
@@ -132,7 +132,7 @@ void SoftLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     {
         Path cap;
         cap.addEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
-        DropShadow (Colour (0x55506088), big ? 14 : 8, Point<int> (0, big ? 7 : 4)).drawForPath (g, cap);
+        DropShadow (Colour (0x55506088), big ? 14 : 8, juce::Point<int> (0, big ? 7 : 4)).drawForPath (g, cap);
 
         g.setGradientFill (ColourGradient (Colours::white, c.x, c.y - capR,
                                            Colour (0xffe3e8f1), c.x, c.y + capR, false));
@@ -146,7 +146,7 @@ void SoftLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     {
         const float pr   = capR * 0.66f;
         const float dotR = big ? 6.5f : 4.2f;
-        const Point<float> p (c.x + pr * std::sin (angle), c.y - pr * std::cos (angle));
+        const juce::Point<float> p (c.x + pr * std::sin (angle), c.y - pr * std::cos (angle));
 
         g.setColour (ks::dotBlue.withAlpha (0.35f));
         g.fillEllipse (p.x - dotR - 2.0f, p.y - dotR - 2.0f, (dotR + 2.0f) * 2.0f, (dotR + 2.0f) * 2.0f);
@@ -168,7 +168,7 @@ void SoftLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b
 
     Path p;
     p.addRoundedRectangle (r, 14.0f);
-    DropShadow (Colour (0x55506088), 12, Point<int> (0, 5)).drawForPath (g, p);
+    DropShadow (Colour (0x55506088), 12, juce::Point<int> (0, 5)).drawForPath (g, p);
 
     const Colour top = highlighted ? Colour (0xff474e63) : Colour (0xff3a4052);
     g.setGradientFill (ColourGradient (top, r.getX(), r.getY(),
@@ -184,7 +184,7 @@ void SoftLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b
     g.drawEllipse (face, 1.0f);
 
     // LED
-    const Point<float> led (r.getRight() - 10.0f, r.getY() + 10.0f);
+    const juce::Point<float> led (r.getRight() - 10.0f, r.getY() + 10.0f);
     if (on)
     {
         g.setColour (ks::amber.withAlpha (0.28f));
@@ -439,7 +439,7 @@ void KeyShiftEditor::paint (juce::Graphics& g)
     // light panel pulled over the display
     Path panel;
     panel.addRoundedRectangle (0.0f, (float) kPanelTop, W, 400.0f, 24.0f);
-    DropShadow (Colour (0x66000000), 18, Point<int> (0, -4)).drawForPath (g, panel);
+    DropShadow (Colour (0x66000000), 18, juce::Point<int> (0, -4)).drawForPath (g, panel);
 
     g.setGradientFill (ColourGradient (Colour (0xfff4f7fb), 0.0f, (float) kPanelTop,
                                        Colour (0xffe2e8f2), 0.0f, (float) kMeterTop, false));
