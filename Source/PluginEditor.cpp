@@ -9,7 +9,7 @@ namespace
     const juce::Rectangle<float> kCard   (14.0f, 14.0f, 572.0f, 364.0f);
     const juce::Rectangle<float> kModule (360.0f, 52.0f, 212.0f, 166.0f);
 
-    void drawTextLabel (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r,
+    void drawLabel (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r,
                     float size, bool bold, juce::Colour col, float kerning,
                     juce::Justification just)
     {
@@ -91,32 +91,26 @@ void SoftLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     for (int i = 0; i < n; ++i)
     {
         const float a = startAngle + (float) i / (float) (n - 1) * (endAngle - startAngle);
-        const juce::Point<float> point {
-            c.x + ringR * std::sin (a),
-            c.y - ringR * std::cos (a)
-        };
+        const juce::Point<float> p (c.x + ringR * std::sin (a), c.y - ringR * std::cos (a));
 
-        const bool isLit = bipolar
-            ? (i >= jmin (mid, active) && i <= jmax (mid, active))
-            : (pos > 0.0f && i <= active);
+        bool lit;
+        if (bipolar) lit = (i >= jmin (mid, active)) && (i <= jmax (mid, active));
+        else         lit = pos > 0.0f && i <= active;
 
         const float baseR = big ? 1.5f : 1.1f;
-        const float dotR  = (i == mid && bipolar) ? baseR * 1.5f : baseR;
+        const float r     = (i == mid && bipolar) ? baseR * 1.5f : baseR;
 
-        if (isLit)
+        if (lit)
         {
             g.setColour (ks::dotLit.withAlpha (0.20f));
-            g.fillEllipse (point.x - dotR * 2.6f, point.y - dotR * 2.6f,
-                           dotR * 5.2f, dotR * 5.2f);
+            g.fillEllipse (p.x - r * 2.6f, p.y - r * 2.6f, r * 5.2f, r * 5.2f);
             g.setColour (ks::dotLit);
-            g.fillEllipse (point.x - dotR * 1.2f, point.y - dotR * 1.2f,
-                           dotR * 2.4f, dotR * 2.4f);
+            g.fillEllipse (p.x - r * 1.2f, p.y - r * 1.2f, r * 2.4f, r * 2.4f);
         }
         else
         {
             g.setColour (ks::dotOff);
-            g.fillEllipse (point.x - dotR, point.y - dotR,
-                           dotR * 2.0f, dotR * 2.0f);
+            g.fillEllipse (p.x - r, p.y - r, r * 2.0f, r * 2.0f);
         }
     }
 
@@ -195,7 +189,7 @@ void SoftLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b
     }
     g.fillEllipse (led.x - 3.0f, led.y - 3.0f, 6.0f, 6.0f);
 
-    drawTextLabel (g, "BYPASS", r.withTrimmedLeft (r.getHeight() * 0.8f), 9.5f, false,
+    drawLabel (g, "BYPASS", r.withTrimmedLeft (r.getHeight() * 0.8f), 9.5f, false,
                on ? Colour (0xff5d6580) : ks::inkSoft, 0.22f, Justification::centred);
 }
 
@@ -204,7 +198,7 @@ void SoftLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b
 //==============================================================================
 KeyShiftEditor::KeyShiftEditor (KeyShiftProcessor& p)
     : AudioProcessorEditor (&p),
-      keyShiftProcessor (p),
+      processor (p),
       pitchAtt  (p.apvts, "semitones", pitch),
       fineAtt   (p.apvts, "fine",      fine),
       mixAtt    (p.apvts, "mix",       mix),
@@ -251,8 +245,8 @@ void KeyShiftEditor::setupKnob (juce::Slider& s, bool big, bool bipolar, double 
 
 void KeyShiftEditor::timerCallback()
 {
-    displayIn  = juce::jmax (keyShiftProcessor.consumeInputPeak(),  displayIn  * 0.82f);
-    displayOut = juce::jmax (keyShiftProcessor.consumeOutputPeak(), displayOut * 0.82f);
+    displayIn  = juce::jmax (processor.consumeInputPeak(),  displayIn  * 0.82f);
+    displayOut = juce::jmax (processor.consumeOutputPeak(), displayOut * 0.82f);
 
     repaint (kModule.getSmallestIntegerContainer().expanded (30, 30));
 }
@@ -301,23 +295,23 @@ void KeyShiftEditor::drawModule (juce::Graphics& g)
     const String shiftText = String ((total >= 0.0 ? "+" : "") + String (total, 2));
     const juce::Rectangle<float> valueRect (m.getX() + 18.0f, m.getY() + 36.0f, 100.0f, 32.0f);
 
-    drawTextLabel (g, "SHIFT", { m.getX() + 18.0f, m.getY() + 20.0f, 80.0f, 12.0f }, 9.0f, false,
+    drawLabel (g, "SHIFT", { m.getX() + 18.0f, m.getY() + 20.0f, 80.0f, 12.0f }, 9.0f, false,
                ks::cyan, 0.30f, Justification::centredLeft);
 
     for (float dx : { -1.5f, 1.5f })
         for (float dy : { -1.5f, 1.5f })
-            drawTextLabel (g, shiftText, valueRect.translated (dx, dy), 26.0f, false,
+            drawLabel (g, shiftText, valueRect.translated (dx, dy), 26.0f, false,
                        ks::cyan.withAlpha (0.10f), 0.02f, Justification::centredLeft);
 
-    drawTextLabel (g, shiftText, valueRect, 26.0f, false, Colour (0xffeaf6ff), 0.02f,
+    drawLabel (g, shiftText, valueRect, 26.0f, false, Colour (0xffeaf6ff), 0.02f,
                Justification::centredLeft);
-    drawTextLabel (g, "SEMITONES", { m.getX() + 18.0f, m.getY() + 68.0f, 90.0f, 12.0f }, 8.0f, false,
+    drawLabel (g, "SEMITONES", { m.getX() + 18.0f, m.getY() + 68.0f, 90.0f, 12.0f }, 8.0f, false,
                Colour (0xff6b7389), 0.28f, Justification::centredLeft);
 
     const double ratio = std::pow (2.0, total / 12.0);
-    drawTextLabel (g, "x" + String (ratio, 3), { m.getX() + 18.0f, m.getY() + 104.0f, 90.0f, 14.0f },
+    drawLabel (g, "x" + String (ratio, 3), { m.getX() + 18.0f, m.getY() + 104.0f, 90.0f, 14.0f },
                12.0f, false, Colour (0xff9fb4c8), 0.08f, Justification::centredLeft);
-    drawTextLabel (g, "RATIO", { m.getX() + 18.0f, m.getY() + 118.0f, 90.0f, 12.0f }, 8.0f, false,
+    drawLabel (g, "RATIO", { m.getX() + 18.0f, m.getY() + 118.0f, 90.0f, 12.0f }, 8.0f, false,
                Colour (0xff6b7389), 0.28f, Justification::centredLeft);
 
     // --- meters (right) ---
@@ -328,9 +322,9 @@ void KeyShiftEditor::drawModule (juce::Graphics& g)
     drawMeter (g, xIn,  yBottom, displayIn);
     drawMeter (g, xOut, yBottom, displayOut);
 
-    drawTextLabel (g, "IN",  { xIn  - 6.0f, yBottom + 6.0f, 24.0f, 10.0f }, 8.0f, false,
+    drawLabel (g, "IN",  { xIn  - 6.0f, yBottom + 6.0f, 24.0f, 10.0f }, 8.0f, false,
                Colour (0xff6b7389), 0.2f, Justification::centred);
-    drawTextLabel (g, "OUT", { xOut - 6.0f, yBottom + 6.0f, 24.0f, 10.0f }, 8.0f, false,
+    drawLabel (g, "OUT", { xOut - 6.0f, yBottom + 6.0f, 24.0f, 10.0f }, 8.0f, false,
                Colour (0xff6b7389), 0.2f, Justification::centred);
 
     // dB scale
@@ -339,7 +333,7 @@ void KeyShiftEditor::drawModule (juce::Graphics& g)
     for (const auto& mk : marks)
     {
         const float yc = yBottom - (float) (mk.seg + 1) * 6.5f + 2.0f + 2.25f;
-        drawTextLabel (g, mk.text, { m.getX() + 150.0f, yc - 6.0f, 40.0f, 12.0f }, 8.0f, false,
+        drawLabel (g, mk.text, { m.getX() + 150.0f, yc - 6.0f, 40.0f, 12.0f }, 8.0f, false,
                    Colour (0xff6b7389), 0.1f, Justification::centredLeft);
     }
 }
@@ -366,7 +360,7 @@ void KeyShiftEditor::paint (juce::Graphics& g)
     g.strokePath (card, PathStrokeType (1.0f));
 
     // title
-    drawTextLabel (g, "KEYSHIFT", { 36.0f, 28.0f, 200.0f, 14.0f }, 10.5f, false,
+    drawLabel (g, "KEYSHIFT", { 36.0f, 28.0f, 200.0f, 14.0f }, 10.5f, false,
                ks::ink, 0.38f, Justification::centredLeft);
 
     // tiny dot grid, top right
@@ -384,12 +378,12 @@ void KeyShiftEditor::paint (juce::Graphics& g)
     const int mixPc = roundToInt ((float) mix.getValue() * 100.0f);
     const float outDb = (float) output.getValue();
 
-    drawTextLabel (g, "-12", { 182.0f - 81.0f - 20.0f, 260.0f, 40.0f, 12.0f }, 9.5f, false,
+    drawLabel (g, "-12", { 182.0f - 81.0f - 20.0f, 260.0f, 40.0f, 12.0f }, 9.5f, false,
                ks::inkSoft, 0.1f, Justification::centred);
-    drawTextLabel (g, "+12", { 182.0f + 81.0f - 20.0f, 260.0f, 40.0f, 12.0f }, 9.5f, false,
+    drawLabel (g, "+12", { 182.0f + 81.0f - 20.0f, 260.0f, 40.0f, 12.0f }, 9.5f, false,
                ks::inkSoft, 0.1f, Justification::centred);
 
-    drawTextLabel (g, "PITCH  " + bullet + "  " + String ((semis > 0 ? "+" : "") + String (semis)) + " st",
+    drawLabel (g, "PITCH  " + bullet + "  " + String ((semis > 0 ? "+" : "") + String (semis)) + " st",
                { 62.0f, 292.0f, 240.0f, 22.0f }, 13.0f, false, ks::ink, 0.22f, Justification::centred);
 
     struct Small { const char* name; juce::String value; float x; };
@@ -401,9 +395,9 @@ void KeyShiftEditor::paint (juce::Graphics& g)
     };
     for (const auto& sm : smalls)
     {
-        drawTextLabel (g, sm.name,  { sm.x - 5.0f, 302.0f, 74.0f, 12.0f }, 9.0f, false,
+        drawLabel (g, sm.name,  { sm.x - 5.0f, 302.0f, 74.0f, 12.0f }, 9.0f, false,
                    ks::inkSoft, 0.26f, Justification::centred);
-        drawTextLabel (g, sm.value, { sm.x - 5.0f, 314.0f, 74.0f, 12.0f }, 9.5f, false,
+        drawLabel (g, sm.value, { sm.x - 5.0f, 314.0f, 74.0f, 12.0f }, 9.5f, false,
                    ks::ink, 0.10f, Justification::centred);
     }
 
@@ -413,9 +407,9 @@ void KeyShiftEditor::paint (juce::Graphics& g)
     g.setColour (Colours::white.withAlpha (0.9f));
     g.fillRect (36.0f, 335.0f, 528.0f, 1.0f);
 
-    const double sr = keyShiftProcessor.getSampleRate();
-    const String lat = sr > 0.0 ? String (keyShiftProcessor.getLatencySamples() * 1000.0 / sr, 0) + " ms" : String ("--");
-    drawTextLabel (g, "LATENCY  " + lat, { 36.0f, 342.0f, 220.0f, 26.0f }, 9.5f, false,
+    const double sr = processor.getSampleRate();
+    const String lat = sr > 0.0 ? String (processor.getLatencySamples() * 1000.0 / sr, 0) + " ms" : String ("--");
+    drawLabel (g, "LATENCY  " + lat, { 36.0f, 342.0f, 220.0f, 26.0f }, 9.5f, false,
                ks::inkSoft, 0.22f, Justification::centredLeft);
 
     // black glowing module
