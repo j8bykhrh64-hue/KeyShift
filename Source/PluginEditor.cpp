@@ -189,7 +189,7 @@ void SoftLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b
     }
     g.fillEllipse (led.x - 3.0f, led.y - 3.0f, 6.0f, 6.0f);
 
-    drawLabel (g, "BYPASS", r.withTrimmedLeft (r.getHeight() * 0.8f), 9.5f, false,
+    ::drawLabel (g, "BYPASS", r.withTrimmedLeft (r.getHeight() * 0.8f), 9.5f, false,
                on ? Colour (0xff5d6580) : ks::inkSoft, 0.22f, Justification::centred);
 }
 
